@@ -9,44 +9,115 @@ var ccdcUtils = require('users/parevalo_bu/gee-ccdc-tools:ccdcUtilities/ccdc.js'
  
 /**
 * Get Landsat images for a specific region
-* Possible bands and indices: BLUE, GREEN, RED, NIR, SWIR1, SWIR2, NDVI, NBR, EVI, EVI2,BRIGHTNESS, GREENNESS, WETNESS
+* Possible bands and indices: BLUE, GREEN, RED, NIR, SWIR1, SWIR2, NDVI, NBR, 
+* EVI, EVI2,BRIGHTNESS, GREENNESS, WETNESS
 * @param {ee.Dict} options Parameter file containing the keys below
+* @param {Number} collection Lansat collection to use (1 or 2)
 * @param {String} start First date to filter images
 * @param {String} end Last date to filter images
+* @param {String} startDoy First day of year to filter images
+* @param {String} endDoy Last day of year to filter images
+* @param {ee.Geometry} region Region to filter the collection
 * @param {list} targetBands Bands and indices to return
-* 
-* @returns                ee.ImageCol.    Masked image collection with L4, L5, L7, and L8
+* @param {Bool} useMask Retrieve images after performing filtering of clouds,
+* cloud shadows and removing other bad pixels (true), or retrieve 
+* entire collection false)
+* @param {Dictionary} sensors Dictionary with sensors to retrieve
+* @return {ee.ImageCollection} Landat image collection filtered wit the specified
+* parameters
 */
 function getLandsat(options) {
+  var collection = (options && options.collection) || 1
   var start = (options && options.start) || '1980-01-01'
-  var end = (options && options.end) || '2021-01-01'
+  var end = (options && options.end) || '2023-01-01'
   var startDoy = (options && options.startDOY) || 1
   var endDoy = (options && options.endDOY) || 366
   var region = (options && options.region) || null
-  var targetBands = (options && options.targetBands) || ['BLUE','GREEN','RED','NIR','SWIR1','SWIR2','TEMP','NBR','NDFI','NDVI','GV','NPV','Shade','Soil']
+  var targetBands = (options && options.targetBands) || ['BLUE','GREEN','RED',
+      'NIR','SWIR1','SWIR2','TEMP', 'NBR','NDFI','NDVI','GV','NPV','Shade','Soil',
+      'EVI', 'EVI2', 'BRIGHTNESS', 'GREENNESS', 'WETNESS']
   var useMask = (options && options.useMask) || true
   var sensors = (options && options.sensors) || {l4: true, l5: true, l7: true, l8: true}
  
-  // Filter using new filtering functions
-  var collection4 = ee.ImageCollection('LANDSAT/LT04/C01/T1_SR')
-      .filterDate(start, end)
-  var collection5 = ee.ImageCollection('LANDSAT/LT05/C01/T1_SR')
-      .filterDate(start, end)
-  var collection7 = ee.ImageCollection('LANDSAT/LE07/C01/T1_SR')
-      .filterDate(start, end)
-  var collection8 = ee.ImageCollection('LANDSAT/LC08/C01/T1_SR')
-      .filterDate(start, end)
-   if (useMask == 'No') {
+  if (useMask == 'No') {
     useMask = false
-  }
-  if (useMask) {
-    collection8 = collection8.map(prepareL8)
-    collection7 = collection7.map(prepareL7)
-    collection5 = collection5.map(prepareL4L5)
-    collection4 = collection4.map(prepareL4L5)
+  } 
+ 
+  // Define collection to use and select band names and functions accordingly
+  if (collection == 1){
+    var collection8 = ee.ImageCollection('LANDSAT/LC08/C01/T1_SR')
+        .filterDate(start, end)
+    var collection7 = ee.ImageCollection('LANDSAT/LE07/C01/T1_SR')
+        .filterDate(start, end)
+    var collection5 = ee.ImageCollection('LANDSAT/LT05/C01/T1_SR')
+        .filterDate(start, end)
+    var collection4 = ee.ImageCollection('LANDSAT/LT04/C01/T1_SR')
+        .filterDate(start, end)    
 
-  }
+    // Retrieve filtered images (clouds, shadows, etc) or raw time series
+    if (useMask) {
+      collection8 = collection8.map(prepareL8)
+      collection7 = collection7.map(prepareL7)
+      collection5 = collection5.map(prepareL4L5)
+      collection4 = collection4.map(prepareL4L5)
+    } else {
+      var bandListL8 = ['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B10']
+      var nameListL8 = ['BLUE', 'GREEN', 'RED', 'NIR', 'SWIR1', 'SWIR2', 'TEMP']
+      var bandListL457 = ['B1', 'B2','B3','B4','B5','B7','B6']
+      var nameListL457 = ['BLUE', 'GREEN', 'RED', 'NIR', 'SWIR1', 'SWIR2', 'TEMP']
+      collection8 = collection8.map(function(i) {
+          return i.select(bandListL8).rename(nameListL8)})
+      collection7 = collection7.map(function(i) {
+          return i.select(bandListL457).rename(nameListL457)})
+      collection4 = collection4.map(function(i) {
+          return i.select(bandListL457).rename(nameListL457)})
+      collection5 = collection5.map(function(i) {
+          return i.select(bandListL457).rename(nameListL457)})
+      
+    }    
 
+  } else if (collection == 2){
+    var collection8 = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2')
+        .filterDate(start, end);
+    var collection7 = ee.ImageCollection('LANDSAT/LE07/C02/T1_L2')
+        .filterDate(start, end);
+    var collection5 = ee.ImageCollection('LANDSAT/LT05/C02/T1_L2')
+        .filterDate(start, end);
+    var collection4 = ee.ImageCollection('LANDSAT/LT04/C02/T1_L2')
+        .filterDate(start, end);
+    
+    
+    if (useMask) {
+      collection8 = collection8.map(prepareL8Col2)
+      collection7 = collection7.map(prepareL4L5L7Col2)
+      collection5 = collection5.map(prepareL4L5L7Col2)
+      collection4 = collection4.map(prepareL4L5L7Col2)
+      
+    }else if (collection == 3){
+    var collection8 = ee.ImageCollection('NASA/HLS/HLSL30/v002')
+        .filterDate(start, end);
+    
+    if (useMask) {
+      collection8 = collection8.map(prepareL8Col2)
+    }
+    
+    else {
+      var bandListL8 = ['SR_B2', 'SR_B3', 'SR_B4', 'SR_B5', 'SR_B6', 'SR_B7', 'SR_B10']
+      var nameListL8 = ['BLUE', 'GREEN', 'RED', 'NIR', 'SWIR1', 'SWIR2', 'TEMP']
+      var bandListL457 = ['SR_B1', 'SR_B2','SR_B3','SR_B4','SR_B5','SR_B7','ST_B6']
+      var nameListL457 = ['BLUE', 'GREEN', 'RED', 'NIR', 'SWIR1', 'SWIR2', 'TEMP']
+      collection8 = collection8.map(function(i) {
+          return i.select(bandListL8).rename(nameListL8)})
+      collection7 = collection7.map(function(i) {
+          return i.select(bandListL457).rename(nameListL457)})
+      collection4 = collection4.map(function(i) {
+          return i.select(bandListL457).rename(nameListL457)})
+      collection5 = collection5.map(function(i) {
+          return i.select(bandListL457).rename(nameListL457)})
+    }
+  }
+  
+  // Merge all collections, compute indices and filter if requested
   var col = collection4.merge(collection5)
                         .merge(collection7)
                         .merge(collection8)
@@ -694,35 +765,125 @@ function prepareL8(image){
 }
 
 /**
+* Prepare Collection 2 Landsat 4, 5, and 7 with strict filtering of noisy pixels
+* @param {ee.Image} image Landsat SR image with pixel_qa band
+* @returns {ee.Image} Landsat image with masked noisy pixels
+*/
+function prepareL4L5L7Col2(image){
+  
+  var bandList = ['SR_B1','SR_B2','SR_B3','SR_B4','SR_B5','SR_B7','ST_B6']
+  var nameList = ['BLUE', 'GREEN', 'RED', 'NIR', 'SWIR1', 'SWIR2', 'TEMP']
+  var subBand = ['BLUE', 'GREEN', 'RED', 'NIR', 'SWIR1', 'SWIR2']
+
+  var opticalBands = image.select('SR_B.').multiply(0.0000275).add(-0.2);
+  var thermalBand = image.select('ST_B6').multiply(0.00341802).add(149.0);
+  var scaled = opticalBands.addBands(thermalBand, null, true).select(bandList)
+      .rename(nameList);
+  
+  var validQA = [5440, 5504]  //5442，5506
+  
+  var mask1 = ee.Image(image).select(['QA_PIXEL']).remap(
+      validQA, ee.List.repeat(1, validQA.length), 0)
+  // Gat valid data mask, for pixels without band saturation
+  var mask2 = image.select('QA_RADSAT').eq(0)
+  var mask3 = scaled.select(subBand).reduce(ee.Reducer.min()).gt(0)
+  var mask4 = scaled.select(subBand).reduce(ee.Reducer.max()).lt(1)
+  // Mask hazy pixels using AOD threshold
+  var mask5 = (image.select("SR_ATMOS_OPACITY").unmask(-1)).lt(300) 
+  return ee.Image(image).addBands(scaled)
+      .updateMask(mask1.and(mask2).and(mask3).and(mask4).and(mask5))
+}
+
+/**
+* Prepare Collection 2 Landsat 8 with strict filtering of noisy pixels
+* @param {ee.Image} image Landsat SR image with pixel_qa band
+* @param {Boolean} switch between with/without mask
+* @returns {ee.Image} Landsat image with masked noisy pixels
+*/
+function prepareL8Col2(image){
+  
+  var bandList = ['SR_B2', 'SR_B3', 'SR_B4', 'SR_B5', 'SR_B6', 'SR_B7', 'ST_B10']
+  var nameList = ['BLUE', 'GREEN', 'RED', 'NIR', 'SWIR1', 'SWIR2', 'TEMP']
+  var subBand = ['BLUE', 'GREEN', 'RED', 'NIR', 'SWIR1', 'SWIR2']
+  
+  var opticalBands = image.select('SR_B.').multiply(0.0000275).add(-0.2);
+  var thermalBand = image.select('ST_B10').multiply(0.00341802).add(149.0);
+  var scaled = opticalBands.addBands(thermalBand, null, true).select(bandList)
+      .rename(nameList);
+  
+  var validTOA = [2, 4, 32, 66, 68, 96, 100, 130, 132, 160, 164]
+  var validQA = [21824, 21888] // 21826, 21890
+  
+  var mask1 = ee.Image(image).select(['QA_PIXEL']).remap(
+      validQA, ee.List.repeat(1, validQA.length), 0)
+  var mask2 = image.select('QA_RADSAT').eq(0)
+  // Assume that all saturated pixels equal to 20000
+  var mask3 = scaled.select(subBand).reduce(ee.Reducer.min()).gt(0)
+  var mask4 = scaled.select(subBand).reduce(ee.Reducer.max()).lt(1)
+  var mask5 = ee.Image(image).select(['SR_QA_AEROSOL']).remap(
+      validTOA, ee.List.repeat(1, validTOA.length), 0)
+  
+  return ee.Image(image).addBands(scaled)
+      .updateMask(mask1.and(mask2).and(mask3).and(mask4).and(mask5))
+}
+
+/**
 * Generate and combine filtered collections of Landsat 4, 5, 7 and 8
+* Simpler and faster than getLandsat
 * @param {ee.Image} geom Geometry used to filter the collection
 * @param {String} startDate Initial date to filter the collection
 * @param {String} endDate Final date to filter the collection
+* @param {Integer} collection Landsat collection to use (1 or 2)
 * @returns {ee.ImageCollection} Filtered Landsat collection
 */
-function generateCollection(geom, startDate, endDate){
-  var filteredL8 = (ee.ImageCollection('LANDSAT/LC08/C01/T1_SR')
-                      .filter("WRS_ROW < 122")
-                      .filterBounds(geom)
-                      .map(prepareL8))
+function generateCollection(geom, startDate, endDate, collection){
+  collection = collection || 1
+  
+  if (collection == 1){
+    var filteredL8 = (ee.ImageCollection('LANDSAT/LC08/C01/T1_SR')
+        .filter("WRS_ROW < 122")
+        .filterBounds(geom)
+        .map(prepareL8))
 
-  var filteredL7 = (ee.ImageCollection('LANDSAT/LE07/C01/T1_SR')
-                      .filter("WRS_ROW < 122")
-                      .filterBounds(geom)
-                      .map(prepareL7))
-                      
-  // Originally not included in Noel's run
-  var filteredL4 = (ee.ImageCollection('LANDSAT/LT04/C01/T1_SR')
-                      .filter("WRS_ROW < 122")
-                      .filterBounds(geom)
-                      .map(prepareL4L5))
-  var filteredL5 = (ee.ImageCollection('LANDSAT/LT05/C01/T1_SR')
-                      .filter("WRS_ROW < 122")
-                      .filterBounds(geom)
-                      .map(prepareL4L5))
-
-  var mergedCollections = ee.ImageCollection(filteredL8).merge(filteredL7).merge(filteredL5).merge(filteredL4)
-  return mergedCollections.filterDate(startDate, endDate)
+    var filteredL7 = (ee.ImageCollection('LANDSAT/LE07/C01/T1_SR')
+        .filter("WRS_ROW < 122")
+        .filterBounds(geom)
+        .map(prepareL7))
+                
+    // Originally not included in Noel's run
+    var filteredL4 = (ee.ImageCollection('LANDSAT/LT04/C01/T1_SR')
+        .filter("WRS_ROW < 122")
+        .filterBounds(geom)
+        .map(prepareL4L5))
+    var filteredL5 = (ee.ImageCollection('LANDSAT/LT05/C01/T1_SR')
+        .filter("WRS_ROW < 122")
+        .filterBounds(geom)
+        .map(prepareL4L5))
+  } else if (collection == 2){
+    var filteredL8 = (ee.ImageCollection('LANDSAT/LC08/C02/T1_L2')
+        .filter("WRS_ROW < 122")
+        .filterBounds(geom)
+        .map(prepareL8Col2))
+  
+    var filteredL7 = (ee.ImageCollection('LANDSAT/LE07/C02/T1_L2')
+        .filter("WRS_ROW < 122")
+        .filterBounds(geom)
+        .map(prepareL4L5L7Col2))
+                        
+    // Originally not included in Noel's run
+    var filteredL4 = (ee.ImageCollection('LANDSAT/LT04/C02/T1_L2')
+        .filter("WRS_ROW < 122")
+        .filterBounds(geom)
+              .map(prepareL4L5L7Col2))
+    var filteredL5 = (ee.ImageCollection('LANDSAT/LT05/C02/T1_L2')
+        .filter("WRS_ROW < 122")
+        .filterBounds(geom)
+                    .map(prepareL4L5L7Col2))
+  }
+  
+  var mergedCollections = ee.ImageCollection(filteredL8).merge(filteredL7)
+      .merge(filteredL5).merge(filteredL4).filterDate(startDate, endDate)
+  return mergedCollections
 }
 
 /**
@@ -776,6 +937,3 @@ exports = {
   calcNDFI: calcNDFI,
   makeAutoGrid: makeAutoGrid,
 }
-
-
-
